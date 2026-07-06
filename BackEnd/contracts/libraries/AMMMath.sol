@@ -18,4 +18,11 @@ library AMMMath {
         uint256 shares = (totalSupply * _reserveAdded0 / reserve0);
         return shares;
     }
+
+    function computeRetreivalAmount(uint256 totalSupply, uint256 lpShares, uint256 reserve0, uint256 reserve1) internal pure returns (uint256, uint256) {
+        uint256 amount0 = (lpShares * reserve0) / totalSupply;
+        uint256 amount1 = (lpShares * reserve1) / totalSupply;
+
+        return (amount0, amount1);
+    }
 }
