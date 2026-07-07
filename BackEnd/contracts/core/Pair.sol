@@ -20,8 +20,8 @@ contract Pair is ERC20 {
     bool private locked; // For reenterancy
 
     event LiquidityAdded(address indexed user, address pool, address firstToken, uint256 firstTokenAmount, address secondToken, uint256 secondTokenAmount);
-
     event LiquidityRemoved(address indexed user, address pool, uint256 sharesRetreived, address firstToken, uint256 firstTokenAmount, address secondToken, uint256 secondTokenAmount);
+    event SwapExecuted(address sender, address inToken, address ouToken, uint256 amountIn, uint256 amountOut, address recipient);
 
     constructor() ERC20("ETH-USDC LP", "ETHUSDC-LP") {
         factory = msg.sender;
@@ -78,13 +78,66 @@ contract Pair is ERC20 {
 
         _burn(msg.sender, share); // If transfer faild the whole transaction will revert, so it is better to burn first
 
-        bool success0 = IERC20(token0).transfer(address(this), msg.sender, amount0);
-        bool success1 = IERC20(token1).transfer(address(this), msg.sender, amount1);
+        bool success0 = IERC20(token0).transfer(msg.sender, amount0);
+        bool success1 = IERC20(token1).transfer(msg.sender, amount1);
         require(success0 && success1, "Something happends with the transfer of tokens");
 
         sync();
 
         emit LiquidityRemoved(msg.sender, address(this), share, token0, amount0, token1, amount1);
+    }
+
+    function swap(address token, uint256 amountIn, uint256 minOutAmount, address recipient) external lock {
+        require(initialized, "The Pool contract still not intialized");
+        require(token == token0 || token == token1, "This token does not much this pool");
+        require(amountIn > 0, "You did not sent any amount to swap");
+        require(recipient != address(0), "Invalide recipient");
+
+        // Extracting the token the user swaps to
+        address toToken;
+        if(token == token0) {
+            toToken = token1
+        } else {
+            toToken = token0;
+        }
+
+        // @Todo some ERC20 tokens charge a transfer feee, if the user specifies 100, the Pair could get only 98, so this will be compatible in order to get the right amountIn
+        /*  balanceBefore = token.balanceOf(address(this));
+
+            transferFrom();
+
+            balanceAfter = token.balanceOf(address(this));
+
+            actualAmountIn = balanceAfter - balanceBefore; */
+
+        // Computing the value of the reserve out
+        (uint256 inReserve, uint256 outReserve) = getReserves(token, toToken);
+
+        (uint256 amountInAfter, uint256 amountOut) = AMMMath.swapOutput(amountIn, inReserve, outReserve);
+        require(amountOut <= outReserve, "INSUFFICIENT_LIQUIDITY");
+
+        // Checking if the minimumOut/slippage if is met
+        require(minOutAmount <= amountOut, "The amount if less than what you want");
+
+        // Transfer of that amount In to the contract token balance
+        bool successIn = IERC20(token).transferFrom(msg.sender, address(this), amountIn);
+        require(successIn, "Something happends with the transfer of token");
+
+        // Transfering the amountOut
+        bool successOut = IERC20(toToken).transfer(recipient, amountOut);
+        require(successOut, "Something happends with the transfer of token");
+        
+        // Checking if the constant remained
+        require((reserve0 * reserve1) == (inReserve + amountInAfter) * (outReserve - amountOut), "The AMM constant is not verified");
+
+        // Sync the reserves
+        sync();
+
+        emit SwapExecuted(msg.sender, token, toToken, amountIn, amountOut, recipient);
+    }
+
+    function getReserves(address inToken, address outToken) internal view returns (uint256, uint256) {
+        return (IERC20(token).balanceOf(address(this)), IERC20(toToken).balanceOf(address(this)));
     }
 
     function sync() internal {

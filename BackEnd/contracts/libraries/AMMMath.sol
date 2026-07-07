@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./Math.sol";
+import "./Constants.sol";
 
 /// @title AMMMath
 /// @notice General-purpose essential mathematical formulas for the DEX .
@@ -24,5 +25,18 @@ library AMMMath {
         uint256 amount1 = (lpShares * reserve1) / totalSupply;
 
         return (amount0, amount1);
+    }
+
+    function swapOutput(uint256 amountIn, uint256 inReserve, uint256 outReserve) internal pure returns (uint256, uint256) {
+        uint256 k = inReserve * outReserve;
+        (uint256 newInReserve, uint256 amountInAfterFee) = computeNewReserve(inReserve, amountIn);
+        uint256 amountOut = outReserve - (k / newInReserve);
+
+        return (amountInAfterFee, amountOut);
+    }
+
+    function computeNewReserve(uint256 inReserve, uint256 amountIn) internal pure returns (uint256, uint256) {
+        uint256 amountInAfterFee = (amountIn * (Constants.getFeeScale() - Constants.getFee())) / Constants.getFeeScale();
+        return (inReserve + amountInAfterFee, amountInAfterFee);
     }
 }
