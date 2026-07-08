@@ -31,6 +31,7 @@ contract Router {
         }
     }
 
+    // It needs before "await lpToken.approve(pairAddress, share)"
     function removeLiquidity(address tokenX, address tokenY, uint256 share) external {
         require(tokenX != tokenY, "Identical tokens");
         address poolAddress = IFactory.getPool(tokenX, tokenY);
@@ -45,8 +46,7 @@ contract Router {
         address poolAddress = IFactory.getPool(token, toToken);
         require(poolAddress != address(0), "There is no pool of this tokens");
         
-        
-        IPair(poolAddress).swap(token, amountIn, minOutAmount, recipient);
+        IPair(poolAddress).swap(msg.sender, token, amountIn, minOutAmount, recipient);
     }
 
     /*

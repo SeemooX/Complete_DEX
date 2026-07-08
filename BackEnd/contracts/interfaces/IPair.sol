@@ -12,11 +12,15 @@ interface IPair {
 
     function removeLiquidity(uint256 share) external;
 
-    function swap(address token, uint256 amountIn, uint256 minOutAmount, address recipient) external;
+    function swap(address from, address token, uint256 amountIn, uint256 minOutAmount, address recipient) external;
 
     function getReserves() external view returns (uint256, uint256);
 
     function getToken0() external view returns (address);
 
     function getToken1() external view returns (address);
+
+    function setNewRouter(address router) external;
+
+    function deleteRouter(address router) external;
 }

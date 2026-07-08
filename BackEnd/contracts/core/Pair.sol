@@ -19,9 +19,12 @@ contract Pair is ERC20 {
     uint256 private reserve1;
     bool private locked; // For reenterancy
 
+    mapping(address => bool) private routersAllowed;
+
     event LiquidityAdded(address indexed user, address pool, address firstToken, uint256 firstTokenAmount, address secondToken, uint256 secondTokenAmount);
     event LiquidityRemoved(address indexed user, address pool, uint256 sharesRetreived, address firstToken, uint256 firstTokenAmount, address secondToken, uint256 secondTokenAmount);
     event SwapExecuted(address sender, address inToken, address ouToken, uint256 amountIn, uint256 amountOut, address recipient);
+    event RouterUpdated(address indexed router, bool allowed);
 
     constructor() ERC20("ETH-USDC LP", "ETHUSDC-LP") {
         factory = msg.sender;
@@ -40,8 +43,9 @@ contract Pair is ERC20 {
         initialized = true; 
     }
 
-    function addLiquidity(address to, uint256 _reserveAdded0, uint256 _reserveAdded1) external lock {
+    function addLiquidity(address to, uint256 _reserveAdded0, uint256 _reserveAdded1) external onlyRouter lock {
         require(initialized, "The Pool contract still not intialized");
+        require(to != address(0), "Invalid recipient");
         require(_reserveAdded0 != 0 && _reserveAdded1!= 0, "You must provide tokens to put in the pool");
 
         // Set up the LPShares representing the tokens
@@ -64,25 +68,29 @@ contract Pair is ERC20 {
         emit LiquidityAdded(to, address(this), token0, _reserveAdded0, token1, _reserveAdded1);
     }
 
-    function removeLiquidity(uint256 share) external lock{
+    function removeLiquidity(address to, uint256 share) external onlyRouter lock{
         require(initialized, "The Pool contract still not intialized");
-        require(balanceOf(msg.sender) >= share, "Insufficient LP balance");
+        require(to != address(0), "Invalid recipient");
+        require(balanceOf(to) >= share, "Insufficient LP balance");
         
         uint256 totalSupply = totalSupply();
         (uint256 amount0, uint256 amount1) = AMMMath.computeRetreivalAmount(totalSupply, share, reserve0, reserve1);
+        
+        // Already approved
+        transferFrom(to, address(this), share);
+        _burn(address(this), share); // If transfer faild the whole transaction will revert, so it is better to burn first
 
-        _burn(msg.sender, share); // If transfer faild the whole transaction will revert, so it is better to burn first
-
-        bool success0 = IERC20(token0).transfer(msg.sender, amount0);
-        bool success1 = IERC20(token1).transfer(msg.sender, amount1);
+        bool success0 = IERC20(token0).transfer(to, amount0);
+        bool success1 = IERC20(token1).transfer(to, amount1);
         require(success0 && success1, "Something happends with the transfer of tokens");
 
         sync();
 
-        emit LiquidityRemoved(msg.sender, address(this), share, token0, amount0, token1, amount1);
+        emit LiquidityRemoved(to, address(this), share, token0, amount0, token1, amount1);
     }
 
-    function swap(address token, uint256 amountIn, uint256 minOutAmount, address recipient) external lock {
+    // We will later be back to secure that recipient from being for example attacker's address
+    function swap(address from, address token, uint256 amountIn, uint256 minOutAmount, address recipient) external lock {
         require(initialized, "The Pool contract still not intialized");
         require(token == token0 || token == token1, "This token does not much this pool");
         require(amountIn > 0, "You did not sent any amount to swap");
@@ -115,7 +123,7 @@ contract Pair is ERC20 {
         require(minOutAmount <= amountOut, "The amount if less than what you want");
 
         // Transfer of that amount In to the contract token balance
-        bool successIn = IERC20(token).transferFrom(msg.sender, address(this), amountIn);
+        bool successIn = IERC20(token).transferFrom(from, address(this), amountIn);
         require(successIn, "Something happends with the transfer of token");
 
         // Transfering the amountOut
@@ -151,9 +159,26 @@ contract Pair is ERC20 {
     function getToken1() external view returns (address) {
         return token1;
     }
+
+    function setNewRouter(address router) external onlyFactory {
+        routersAllowed[router] = true;
+
+        emit RouterUpdated(router, true);
+    }
+
+    function deleteRouter(address router) external onlyFactory {
+        routersAllowed[router] = false;
+
+        emit RouterUpdated(router, true);
+    }
     
     modifier onlyFactory() {
         require(msg.sender == factory, "Only factory");
+        _;
+    }
+
+    modifier onlyRouter() {
+        require(routersAllowed[msg.sender] == true);
         _;
     }
 
