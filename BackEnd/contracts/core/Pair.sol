@@ -40,7 +40,7 @@ contract Pair is ERC20 {
         initialized = true; 
     }
 
-    function addLiquidity(uint256 _reserveAdded0, uint256 _reserveAdded1) external lock {
+    function addLiquidity(address to, uint256 _reserveAdded0, uint256 _reserveAdded1) external lock {
         require(initialized, "The Pool contract still not intialized");
         require(_reserveAdded0 != 0 && _reserveAdded1!= 0, "You must provide tokens to put in the pool");
 
@@ -55,18 +55,13 @@ contract Pair is ERC20 {
             }
         }
 
-        // The user already approved this pool contract to spend this amount of tokens
-        bool success0 = IERC20(token0).transferFrom(msg.sender, address(this), _reserveAdded0);
-        bool success1 = IERC20(token1).transferFrom(msg.sender, address(this), _reserveAdded1);
-        require(success0 && success1, "Something happends with the transfer of tokens");
-
         // Adding the reserve, and sending the amount from the sender to this Pair contract
         sync();
 
         // Adding the new shares to existing once
-        _mint(msg.sender, LPShares);
+        _mint(to, LPShares);
 
-        emit LiquidityAdded(msg.sender, address(this), token0, _reserveAdded0, token1, _reserveAdded1);
+        emit LiquidityAdded(to, address(this), token0, _reserveAdded0, token1, _reserveAdded1);
     }
 
     function removeLiquidity(uint256 share) external lock{
@@ -147,6 +142,14 @@ contract Pair is ERC20 {
 
     function getReserves() external view returns (uint256, uint256) {
         return (reserve0, reserve1);
+    }
+
+    function getToken0() external view returns (address) {
+        return token0;
+    }
+
+    function getToken1() external view returns (address) {
+        return token1;
     }
     
     modifier onlyFactory() {

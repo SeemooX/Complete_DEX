@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract LPToken is ERC20, Ownable {
+contract TestToken2 is ERC20, Ownable {
 
     uint256 public immutable maxSupply;
     uint256 public mintCooldownBlocks = 50;

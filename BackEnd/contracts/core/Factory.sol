@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
 import "./Pair.sol";
+import "../libraries/RouterLibrary.sol";
 import "../errors/Errors.sol";
 
 contract Factory is Errors {
@@ -18,7 +16,7 @@ contract Factory is Errors {
         require(token0 != token1, "IDENTICAL_ADDRESSES");
 
         // Normalize order, since it gives one source of truth. And also better gas optimization
-        (address t0, address t1) = token0 < token1 ? (token0, token1) : (token1, token0);
+        (address t0, address t1) = RouterLibrary.sortTokens(token0, token1);
 
         require(pools[t0][t1] == address(0), "POOL_EXISTS");
 
@@ -34,7 +32,7 @@ contract Factory is Errors {
     }
 
     function getPool(address token0, address token1) external view returns (address){
-        (address t0, address t1) = token0 < token1 ? (token0, token1) : (token1, token0);
+        (address t0, address t1) = RouterLibrary.sortTokens(token0, token1);
 
         return pools[t0][t1];
     }
