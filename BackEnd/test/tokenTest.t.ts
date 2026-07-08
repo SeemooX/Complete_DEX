@@ -38,7 +38,7 @@ describe("TestToken1", function () {
         });
     });
 
-    /* describe("Transfers", function () {
+    describe("Transfers", function () {
         it("Should transfer tokens between accounts", async function () {
             const amount = ethers.parseEther("100");
 
@@ -60,7 +60,7 @@ describe("TestToken1", function () {
 
             await expect(
                 token.connect(addr1).transfer(owner.address, amount)
-            ).to.be.reverted;
+            ).to.be.revert;
         });
     });
 
@@ -108,7 +108,7 @@ describe("TestToken1", function () {
                 token
                     .connect(addr1)
                     .transferFrom(owner.address, addr2.address, amount)
-            ).to.be.reverted;
+            ).to.be.revert;
         });
-    }); */
+    });
 });
