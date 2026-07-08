@@ -8,9 +8,9 @@ interface IPair {
     event SwapExecuted(address sender, address inToken, address ouToken, uint256 amountIn, uint256 amountOut, address recipient);
 
 
-    function addLiquidity(uint256 _reserveAdded0, uint256 _reserveAdded1) external;
+    function addLiquidity(address to, uint256 amount0, uint256 amount1) external;
 
-    function removeLiquidity(uint256 share) external;
+    function removeLiquidity(address to, uint256 share) external;
 
     function swap(address from, address token, uint256 amountIn, uint256 minOutAmount, address recipient) external;
 

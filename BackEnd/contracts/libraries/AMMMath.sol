@@ -20,7 +20,7 @@ library AMMMath {
         return shares;
     }
 
-    function computeRetreivalAmount(uint256 totalSupply, uint256 lpShares, uint256 reserve0, uint256 reserve1) internal pure returns (uint256, uint256) {
+    function computeRetrievalAmount(uint256 totalSupply, uint256 lpShares, uint256 reserve0, uint256 reserve1) internal pure returns (uint256, uint256) {
         uint256 amount0 = (lpShares * reserve0) / totalSupply;
         uint256 amount1 = (lpShares * reserve1) / totalSupply;
 

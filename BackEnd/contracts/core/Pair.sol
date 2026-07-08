@@ -3,13 +3,14 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "../errors/Errors.sol";
 import "../libraries/Math.sol";
 import "../libraries/AMMMath.sol";
 
 /// @title Pair
 /// @notice This is the logic that the whole DEX depends on
 
-contract Pair is ERC20 {
+contract Pair is ERC20, PairErrors {
     address public immutable factory;
 
     address private token0;
@@ -17,173 +18,332 @@ contract Pair is ERC20 {
     bool private initialized;
     uint256 private reserve0;
     uint256 private reserve1;
-    bool private locked; // For reenterancy
+    bool private locked;
 
     mapping(address => bool) private routersAllowed;
 
-    event LiquidityAdded(address indexed user, address pool, address firstToken, uint256 firstTokenAmount, address secondToken, uint256 secondTokenAmount);
-    event LiquidityRemoved(address indexed user, address pool, uint256 sharesRetreived, address firstToken, uint256 firstTokenAmount, address secondToken, uint256 secondTokenAmount);
-    event SwapExecuted(address sender, address inToken, address ouToken, uint256 amountIn, uint256 amountOut, address recipient);
-    event RouterUpdated(address indexed router, bool allowed);
+    event LiquidityAdded(
+        address indexed user,
+        address indexed pool,
+        address indexed firstToken,
+        uint256 firstTokenAmount,
+        address secondToken,
+        uint256 secondTokenAmount
+    );
+
+    event LiquidityRemoved(
+        address indexed user,
+        address indexed pool,
+        uint256 sharesRetrieved,
+        address firstToken,
+        uint256 firstTokenAmount,
+        address secondToken,
+        uint256 secondTokenAmount
+    );
+
+    event SwapExecuted(
+        address indexed sender,
+        address indexed inToken,
+        address indexed outToken,
+        uint256 amountIn,
+        uint256 amountOut,
+        address recipient
+    );
+
+    event RouterUpdated(
+        address indexed router,
+        bool allowed
+    );
 
     constructor() ERC20("ETH-USDC LP", "ETHUSDC-LP") {
         factory = msg.sender;
     }
 
-    function initialize(address _token0, address _token1) external onlyFactory{ // The address nomalization, is alread done by the factory when calling this
-        require(_token0 != address(0) && _token1 != address(0), "Token address must not be a null address");
-        require(_token0 != _token1, "Tokens addresses must be different");
-        if(initialized == true) {
-            revert();
+    function initialize(
+        address _token0,
+        address _token1
+    ) external onlyFactory {
+        if (_token0 == address(0) || _token1 == address(0)) {
+            revert ZeroAddress();
         }
-        
+
+        if (_token0 == _token1) {
+            revert IdenticalTokens();
+        }
+
+        if (initialized) {
+            revert AlreadyInitialized();
+        }
+
         token0 = _token0;
         token1 = _token1;
 
-        initialized = true; 
+        initialized = true;
     }
 
-    function addLiquidity(address to, uint256 _reserveAdded0, uint256 _reserveAdded1) external onlyRouter lock {
-        require(initialized, "The Pool contract still not intialized");
-        require(to != address(0), "Invalid recipient");
-        require(_reserveAdded0 != 0 && _reserveAdded1!= 0, "You must provide tokens to put in the pool");
 
-        // Set up the LPShares representing the tokens
-        uint256 LPShares; // Used for later access will be cheap, we wont calculate again at the second if
-        if(totalSupply() == 0) {
-            LPShares = AMMMath.ratio(_reserveAdded0, _reserveAdded1);
-        } else {
-            // Compute the users LPtoken share, and add it to the total LPtoken supply
-            if(((totalSupply() * _reserveAdded0) / reserve0) >= ((totalSupply() * _reserveAdded1) / reserve1)) {
-                LPShares = AMMMath.computeLPShares(totalSupply(), _reserveAdded0, reserve0);
-            }
+    function addLiquidity(
+        address to,
+        uint256 amount0,
+        uint256 amount1
+    ) external onlyRouter lock {
+        if (!initialized) {
+            revert NotInitialized();
         }
 
-        // Adding the reserve, and sending the amount from the sender to this Pair contract
+        if (to == address(0)) {
+            revert ZeroAddress();
+        }
+
+        if (amount0 == 0 || amount1 == 0) {
+            revert InvalidAmount();
+        }
+
+        uint256 liquidity;
+        if (totalSupply() == 0) {
+
+            liquidity = AMMMath.ratio(
+                amount0,
+                amount1
+            );
+        } else {
+            uint256 liquidity0 =
+                AMMMath.computeLPShares(
+                    totalSupply(),
+                    amount0,
+                    reserve0
+                );
+            uint256 liquidity1 =
+                AMMMath.computeLPShares(
+                    totalSupply(),
+                    amount1,
+                    reserve1
+                );
+            liquidity = liquidity0 < liquidity1 ? liquidity0 : liquidity1;
+        }
+
+        _mint(to, liquidity);
+
         sync();
 
-        // Adding the new shares to existing once
-        _mint(to, LPShares);
-
-        emit LiquidityAdded(to, address(this), token0, _reserveAdded0, token1, _reserveAdded1);
+        emit LiquidityAdded(
+            to,
+            address(this),
+            token0,
+            amount0,
+            token1,
+            amount1
+        );
     }
 
-    function removeLiquidity(address to, uint256 share) external onlyRouter lock{
-        require(initialized, "The Pool contract still not intialized");
-        require(to != address(0), "Invalid recipient");
-        require(balanceOf(to) >= share, "Insufficient LP balance");
-        
-        uint256 totalSupply = totalSupply();
-        (uint256 amount0, uint256 amount1) = AMMMath.computeRetreivalAmount(totalSupply, share, reserve0, reserve1);
-        
-        // Already approved
+    function removeLiquidity(
+        address to,
+        uint256 share
+    ) external onlyRouter lock {
+        if (!initialized) {
+            revert NotInitialized();
+        }
+
+        if (to == address(0)) {
+            revert ZeroAddress();
+        }
+
+        if (balanceOf(to) < share) {
+            revert InsufficientBalance();
+        }
+
+        uint256 supply = totalSupply();
+
+        (uint256 amount0, uint256 amount1) =AMMMath.computeRetrievalAmount(supply, share, reserve0, reserve1);
+
+
         transferFrom(to, address(this), share);
-        _burn(address(this), share); // If transfer faild the whole transaction will revert, so it is better to burn first
 
-        bool success0 = IERC20(token0).transfer(to, amount0);
-        bool success1 = IERC20(token1).transfer(to, amount1);
-        require(success0 && success1, "Something happends with the transfer of tokens");
+        _burn(address(this), share);
+
+        _safeTransfer(token0, to, amount0);
+
+        _safeTransfer(token1, to, amount1);
 
         sync();
 
-        emit LiquidityRemoved(to, address(this), share, token0, amount0, token1, amount1);
+        emit LiquidityRemoved(
+            to,
+            address(this),
+            share,
+            token0,
+            amount0,
+            token1,
+            amount1
+        );
     }
 
-    // We will later be back to secure that recipient from being for example attacker's address
-    function swap(address from, address token, uint256 amountIn, uint256 minOutAmount, address recipient) external lock {
-        require(initialized, "The Pool contract still not intialized");
-        require(token == token0 || token == token1, "This token does not much this pool");
-        require(amountIn > 0, "You did not sent any amount to swap");
-        require(recipient != address(0), "Invalide recipient");
-
-        // Extracting the token the user swaps to
-        address toToken;
-        if(token == token0) {
-            toToken = token1
-        } else {
-            toToken = token0;
+    function swap(
+        address from,
+        address token,
+        uint256 amountIn,
+        uint256 minOutAmount,
+        address recipient
+    ) external lock {
+        if (!initialized) {
+            revert NotInitialized();
         }
 
-        // @Todo some ERC20 tokens charge a transfer feee, if the user specifies 100, the Pair could get only 98, so this will be compatible in order to get the right amountIn
-        /*  balanceBefore = token.balanceOf(address(this));
+        if (token != token0 && token != token1) {
+            revert InvalidToken();
+        }
 
-            transferFrom();
+        if (amountIn == 0) {
+            revert InvalidAmount();
+        }
 
-            balanceAfter = token.balanceOf(address(this));
+        if (recipient == address(0)) {
+            revert ZeroAddress();
+        }
 
-            actualAmountIn = balanceAfter - balanceBefore; */
+        address outToken = token == token0 ? token1 : token0;
 
-        // Computing the value of the reserve out
-        (uint256 inReserve, uint256 outReserve) = getReserves(token, toToken);
 
-        (uint256 amountInAfter, uint256 amountOut) = AMMMath.swapOutput(amountIn, inReserve, outReserve);
-        require(amountOut <= outReserve, "INSUFFICIENT_LIQUIDITY");
+        (uint256 reserveIn, uint256 reserveOut) = getReserves(token, outToken);
 
-        // Checking if the minimumOut/slippage if is met
-        require(minOutAmount <= amountOut, "The amount if less than what you want");
 
-        // Transfer of that amount In to the contract token balance
-        bool successIn = IERC20(token).transferFrom(from, address(this), amountIn);
-        require(successIn, "Something happends with the transfer of token");
+        (uint256 amountAfterFee, uint256 amountOut) =AMMMath.swapOutput(amountIn, reserveIn, reserveOut);
 
-        // Transfering the amountOut
-        bool successOut = IERC20(toToken).transfer(recipient, amountOut);
-        require(successOut, "Something happends with the transfer of token");
-        
-        // Checking if the constant remained
-        require((reserve0 * reserve1) == (inReserve + amountInAfter) * (outReserve - amountOut), "The AMM constant is not verified");
+        if (amountOut > reserveOut) {
+            revert InsufficientLiquidity();
+        }
 
-        // Sync the reserves
+        if (amountOut < minOutAmount) {
+            revert SlippageExceeded();
+        }
+
+        _safeTransferFrom(
+            token,
+            from,
+            address(this),
+            amountIn
+        );
+
+        _safeTransfer(
+            outToken,
+            recipient,
+            amountOut
+        );
+
+        if (reserveIn * reserveOut > (reserveIn + amountAfterFee) * (reserveOut - amountOut)) {
+            revert InvalidK();
+        }
+
         sync();
 
-        emit SwapExecuted(msg.sender, token, toToken, amountIn, amountOut, recipient);
+        emit SwapExecuted(
+            msg.sender,
+            token,
+            outToken,
+            amountIn,
+            amountOut,
+            recipient
+        );
     }
 
-    function getReserves(address inToken, address outToken) internal view returns (uint256, uint256) {
-        return (IERC20(token).balanceOf(address(this)), IERC20(toToken).balanceOf(address(this)));
+    function getReserves(
+        address inToken,
+        address outToken
+    ) internal view returns(uint256, uint256) {
+        return (
+            IERC20(inToken).balanceOf(address(this)),
+            IERC20(outToken).balanceOf(address(this))
+        );
     }
 
     function sync() internal {
-        reserve0 = IERC20(token0).balanceOf(address(this));
-        reserve1 = IERC20(token1).balanceOf(address(this));
+        reserve0 =
+            IERC20(token0)
+            .balanceOf(address(this));
+
+        reserve1 =
+            IERC20(token1)
+            .balanceOf(address(this));
     }
 
-    function getReserves() external view returns (uint256, uint256) {
-        return (reserve0, reserve1);
+    function getReserves() external view returns(uint256, uint256) {
+        return (
+            reserve0,
+            reserve1
+        );
     }
 
-    function getToken0() external view returns (address) {
+    function getToken0() external view returns(address) {
         return token0;
     }
 
-    function getToken1() external view returns (address) {
+    function getToken1() external view returns(address) {
         return token1;
+    }
+
+    function isRouterAllowed(address router) external view returns(bool) {
+        return routersAllowed[router];
     }
 
     function setNewRouter(address router) external onlyFactory {
         routersAllowed[router] = true;
 
-        emit RouterUpdated(router, true);
+        emit RouterUpdated(
+            router,
+            true
+        );
     }
 
     function deleteRouter(address router) external onlyFactory {
         routersAllowed[router] = false;
 
-        emit RouterUpdated(router, true);
+        emit RouterUpdated(
+            router,
+            false
+        );
     }
-    
+
+    function _safeTransfer(
+        address token,
+        address to,
+        uint256 amount
+    ) internal {
+        bool success = IERC20(token) .transfer(to, amount);
+        if (!success) {
+            revert TransferFailed();
+        }
+    }
+
+    function _safeTransferFrom(
+        address token,
+        address from,
+        address to,
+        uint256 amount
+    ) internal {
+        bool success = IERC20(token).transferFrom(from, to, amount);
+        if (!success) {
+            revert TransferFailed();
+        }
+    }
+
     modifier onlyFactory() {
-        require(msg.sender == factory, "Only factory");
+        if (msg.sender != factory) {
+            revert OnlyFactory();
+        }
         _;
     }
 
     modifier onlyRouter() {
-        require(routersAllowed[msg.sender] == true);
+        if (!routersAllowed[msg.sender]) {
+            revert OnlyRouter();
+        }
         _;
     }
 
     modifier lock() {
-        require(!locked, "LOCKED");
+        if (locked) {
+            revert Locked();
+        }
         locked = true;
         _;
         locked = false;
