@@ -127,8 +127,7 @@ describe("Pair - Getters", function () {
                 ethers.parseEther("100")
             );
 
-            const reserves =
-                await pair.getReserves();
+            const reserves = await pair.getReserves();            
 
             expect(reserves[0]).to.equal(
                 ethers.parseEther("100")
@@ -151,7 +150,8 @@ describe("Pair - Getters", function () {
         });
 
         it("should return true after adding router", async function () {
-            await pair.setNewRouter(
+            await factory.addRouter(
+                [await pair.getAddress()],
                 router.address
             );
 
@@ -163,11 +163,13 @@ describe("Pair - Getters", function () {
         });
 
         it("should return false after removing router", async function () {
-            await pair.setNewRouter(
+            await factory.addRouter(
+                [await pair.getAddress()],
                 router.address
             );
 
-            await pair.deleteRouter(
+            await factory.removeRouter(
+                [await pair.getAddress()],
                 router.address
             );
 
