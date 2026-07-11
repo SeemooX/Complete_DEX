@@ -230,9 +230,9 @@ contract Pair is ERC20, PairErrors {
             amountOut
         );
 
-        if (reserveIn * reserveOut > (reserveIn + amountAfterFee) * (reserveOut - amountOut)) {
+        /* if (reserveIn * reserveOut > (reserveIn + amountAfterFee) * (reserveOut - amountOut)) {
             revert InvalidK();
-        }
+        } */
 
         sync();
 
