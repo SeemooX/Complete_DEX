@@ -52,9 +52,7 @@ describe("Pair - Getters", function () {
         );
     });
 
-
     describe("getToken0()", function () {
-
         it("should return initialized token0", async function () {
             const token0 = await pair.getToken0();
 
@@ -65,9 +63,7 @@ describe("Pair - Getters", function () {
 
     });
 
-
     describe("getToken1()", function () {
-
         it("should return initialized token1", async function () {
             const token1 = await pair.getToken1();
 
@@ -78,9 +74,7 @@ describe("Pair - Getters", function () {
 
     });
 
-
     describe("Token ordering", function () {
-
         it("should keep tokens sorted", async function () {
             const token0 = await pair.getToken0();
             const token1 = await pair.getToken1();
@@ -92,9 +86,7 @@ describe("Pair - Getters", function () {
 
     });
 
-
     describe("getReserves()", function () {
-
         it("should start with zero reserves", async function () {
             const reserves =
                 await pair.getReserves();
@@ -102,7 +94,6 @@ describe("Pair - Getters", function () {
             expect(reserves[0]).to.equal(0);
             expect(reserves[1]).to.equal(0);
         });
-
 
         it("should update reserves after liquidity", async function () {
             await factory.addRouter(
@@ -150,9 +141,7 @@ describe("Pair - Getters", function () {
 
     });
 
-
     describe("isRouterAllowed()", function () {
-
         it("should return false for unknown router", async function () {
             expect(
                 await pair.isRouterAllowed(
@@ -160,7 +149,6 @@ describe("Pair - Getters", function () {
                 )
             ).to.equal(false);
         });
-
 
         it("should return true after adding router", async function () {
             await pair.setNewRouter(
@@ -173,7 +161,6 @@ describe("Pair - Getters", function () {
                 )
             ).to.equal(true);
         });
-
 
         it("should return false after removing router", async function () {
             await pair.setNewRouter(
@@ -190,7 +177,5 @@ describe("Pair - Getters", function () {
                 )
             ).to.equal(false);
         });
-
     });
-
 });
